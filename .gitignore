@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Project outputs and large data
+results/
+data/
+deformed_scans/
+
+# Point cloud / volume artifacts
+*.las
+*.laz
+*.vdb
+*.ply
+*.pcd
+*.npy
+*.npz
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+Backup/
+*.zip
+old functions/
