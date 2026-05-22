@@ -14,14 +14,12 @@ Kurzes Projekt zur TSDF-basierten Deformationsanalyse auf TLS-Punktwolken.
 - `deform_pointcloud.py`: lokale Beulen-Deformation mit `soll_defo_mm`.
 - `translate_scan_zComponent.py`: z-Translation mit `soll_defo_mm`.
 - `tsdf_deformation_Heatmap.py`: baut Referenz-TSDF und exportiert LAS mit `tsdf_value_mm`.
-- `Sweeper_tsdf_tilt_matrix.py`: automatisierter Sweep fuer Tilt/Vooxelgroessen-Kombinationen.
 
 ## Datenstruktur (lokal)
 - Eingabe: `data/`
 - Deformierte Daten: `deformed_scans/`
 - Ausgaben: `results/`
 
-Hinweis: Diese grossen Datenordner sind in `.gitignore` und werden nicht mit GitHub synchronisiert.
 
 ## Schnellstart
 1. Deformation erzeugen (Beispiel Tilt):
