@@ -1,47 +1,24 @@
-# TSDF-Code (MQPW)
+# TSDF-Code
 
-Kurzes Projekt zur TSDF-basierten Deformationsanalyse auf TLS-Punktwolken.
+Kompakter Code fuer TSDF-, PSR- und Ball-Pivoting-basierte Deformationsanalyse auf TLS-Punktwolken.
 
-## Ziel
-- Referenz-TSDF aus `Epoch1`-Scans aufbauen.
-- Deformierte Punktwolken (`Epoch2`) gegen das TSDF abfragen.
-- Soll-Ist-Deformation pro Punkt vergleichen:
-  - `soll_defo_mm` (künstlich eingebrachte Deformation)
-  - `tsdf_value_mm` (gequeryter TSDF-Wert)
+## Enthaltene Dateien/Ordner
+- `dataset.py`: Laedt LAS-Scans und liefert die zugehoerigen Scanner-Transformationen aus der Diagnostics-Datei.
+- `tilt_pointcloud.py`: Erzeugt verkippte Scans und schreibt `soll_defo_mm` in die Ausgabe-LAS.
+- `bulge_pointcloud.py` (bzw. `deform_pointcloud.py`): Erzeugt lokale Beulen-Deformationen und schreibt `soll_defo_mm`.
+- `translate_scan_zComponent.py`: Erzeugt z-Translationen und schreibt `soll_defo_mm`.
+- `Sweeper_tsdf_deformation.py`: Einheitlicher TSDF-Sweeper fuer `beule`, `tz` und `tilt` mit LAS-Export (`tsdf_value_mm`).
+- `Poisson SR/`: PSR-Code inkl. Sweepern fuer dieselben Deformationsfaelle.
+- `Ball pivoting/`: BPA-Code inkl. Sweepern fuer dieselben Deformationsfaelle.
+- `README.md`: Kurzueberblick ueber Struktur und Zweck der wichtigsten Dateien.
 
-## Wichtige Skripte
-- `tilt_pc.py`: erzeugt verkippte `s1/s2/s3`-Scans und schreibt `soll_defo_mm`.
-- `deform_pointcloud.py`: lokale Beulen-Deformation mit `soll_defo_mm`.
-- `translate_scan_zComponent.py`: z-Translation mit `soll_defo_mm`.
-- `tsdf_deformation_Heatmap.py`: baut Referenz-TSDF und exportiert LAS mit `tsdf_value_mm`.
+## Hinweis zu `compute_normals.py`
+`compute_normals.py` ist fuer die aktuellen Haupt-Skripte nicht zwingend erforderlich und kann bei einem schlanken Upload weggelassen werden.
 
-## Datenstruktur (lokal)
-- Eingabe: `data/`
-- Deformierte Daten: `deformed_scans/`
-- Ausgaben: `results/`
-
-
-## Schnellstart
-1. Deformation erzeugen (Beispiel Tilt):
-```bash
-python3 tilt_pc.py
-```
-
-2. Einzel-TSDF-Export:
-```bash
-python3 tsdf_deformation_Heatmap.py
-```
-
-3. Matrix-Sweep:
-```bash
-python3 Sweeper_tsdf_tilt_matrix.py
-```
+## Daten (nicht im Repo)
+Lokale Datenordner wie `data/`, `deformed_scans/` und `results/` werden nicht mit GitHub synchronisiert.
 
 ## Abhaengigkeiten
 - Python 3.8+
-- `numpy`, `laspy`
-- angepasstes `vdbfusion`-Repo:
-  - https://github.com/LaurenzObf/vdbfusion-custom
-
-Das Custom-`vdbfusion` muss auf dem Zielrechner gebaut/installiert sein, damit `query_sdf` und die Exportfunktionen verfuegbar sind.
-
+- `numpy`, `laspy`, `open3d`
+- angepasstes `vdbfusion`: https://github.com/LaurenzObf/vdbfusion-custom
