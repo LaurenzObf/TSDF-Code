@@ -12,9 +12,6 @@ Kompakter Code fuer TSDF-, PSR- und Ball-Pivoting-basierte Deformationsanalyse a
 - `Ball pivoting/`: BPA-Code inkl. Sweepern fuer dieselben Deformationsfaelle.
 - `README.md`: Kurzueberblick ueber Struktur und Zweck der wichtigsten Dateien.
 
-## Hinweis zu `compute_normals.py`
-`compute_normals.py` ist fuer die aktuellen Haupt-Skripte nicht zwingend erforderlich und kann bei einem schlanken Upload weggelassen werden.
-
 ## Daten (nicht im Repo)
 Lokale Datenordner wie `data/`, `deformed_scans/` und `results/` werden nicht mit GitHub synchronisiert.
 

@@ -26,7 +26,7 @@ from vdbfusion.pybind.vdb_volume import VDBVolume
 
 
 # ========================= INPUT =========================
-base_dir = "/home/laurenz/MQPW"
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 results_root = os.path.join(base_dir, "results")
 data_dir = os.path.join(base_dir, "data")
 epoch2_dir = os.path.join(base_dir, "deformed_scans")

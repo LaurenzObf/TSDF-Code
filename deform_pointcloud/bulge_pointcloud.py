@@ -10,9 +10,15 @@
 # - Richtung kommt aus Scanner-Standpunkten: Mittelwert der (center - scanner_pos)
 
 import os
+import sys
 import numpy as np
 import laspy
 from typing import List, Tuple
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TSDF_DIR = os.path.join(PROJECT_ROOT, "TSDF")
+if TSDF_DIR not in sys.path:
+    sys.path.insert(0, TSDF_DIR)
 
 from dataset import Dataset  # nutzt diag_file zur Pose/Standpunkt-Zuordnung
 
@@ -233,7 +239,7 @@ def deform_las_files(
 
 
 if __name__ == "__main__":
-    base_dir = "/home/laurenz/MQPW"
+    base_dir = PROJECT_ROOT
     data_dir = os.path.join(base_dir, "data")
     out_dir = os.path.join(base_dir, "deformed_scans")
     diag_file = "Brucher_202405_P50_georef_diagnostics.txt"
