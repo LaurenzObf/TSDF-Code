@@ -1,3 +1,4 @@
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -6,14 +7,23 @@ import laspy
 import numpy as np
 import open3d as o3d  # type: ignore
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+TSDF_DIR = PROJECT_ROOT / "TSDF"
+if str(TSDF_DIR) not in sys.path:
+    sys.path.insert(0, str(TSDF_DIR))
+
+from dataset import Dataset
 
 # ========================= INPUT =========================
-base_dir = Path("/home/laurenz/MQPW")
+base_dir = PROJECT_ROOT
+data_dir = base_dir / "data"
 epoch2_dir = base_dir / "deformed_scans"
-results_root = base_dir / "results" / "Ball pivoting"
+results_root = base_dir / "results" / "BPA"
+diag_file = "Brucher_202405_P50_georef_diagnostics.txt"
+epoch1_scans = ["s1_f1.las", "s2_f1.las", "s3_f1.las"]
 
 # Radius factors for BPA (fixed set for all runs)
-radius_factors = (1.0, 1.5, 3.0, 5.0, 7.0, 9.0, 11.0)
+radius_factors = (6.0, 10.0, 14.0)
 
 # --- Deformation spaces ---
 beule_mm_values = [10, 5, 3, 1]
@@ -30,8 +40,6 @@ sweep_values = {
 # Normal estimation parameters
 normal_radius_m = 0.05
 normal_max_nn = 30
-# Raycasting chunk size to reduce RAM pressure on large point sets
-distance_chunk_size = 1_000_000
 
 out_root_name = "BPA_SWEEP_DEFORMATION"
 # =========================================================
@@ -60,6 +68,32 @@ def build_epoch2_file_list(deformation_type: str, value: int) -> List[Path]:
     else:
         raise ValueError(f"Unknown deformation_type: {deformation_type}")
     return [epoch2_dir / n for n in names]
+
+
+def get_scan_positions_from_dataset(ds: Dataset) -> np.ndarray:
+    positions = []
+    for i in range(len(ds)):
+        _points, T = ds[i]
+        T = np.asarray(T)
+        if T.shape == (4, 4):
+            positions.append(T[:3, 3].astype(np.float64))
+        elif T.shape in [(3,), (3, 1)]:
+            positions.append(T.reshape(3).astype(np.float64))
+        else:
+            raise RuntimeError(f"Unbekanntes Transformationsformat bei ds[{i}]: {T.shape}")
+    if not positions:
+        raise RuntimeError("Keine Scannerpositionen gefunden.")
+    return np.vstack(positions)
+
+
+def compute_outward_dir_from_scanners(points: np.ndarray, scanner_positions: np.ndarray) -> np.ndarray:
+    center = np.mean(points, axis=0)
+    v = scanner_positions - center[None, :]
+    d = v.mean(axis=0)
+    n = np.linalg.norm(d)
+    if not np.isfinite(n) or n < 1e-12:
+        raise RuntimeError("Konnte preferred direction aus Scannerpositionen nicht bestimmen.")
+    return d / n
 
 
 def upsert_extra_dim_float32(las: laspy.LasData, name: str, values: np.ndarray) -> None:
@@ -129,6 +163,52 @@ def load_las_points(paths: List[Path]) -> Tuple[np.ndarray, List[laspy.LasData],
     return points, las_all, soll, has_any_soll
 
 
+def build_reference_bpa() -> Tuple[o3d.geometry.TriangleMesh, o3d.t.geometry.RaycastingScene, np.ndarray]:
+    scan_paths = [str(data_dir / fn) for fn in epoch1_scans]
+    ds = Dataset(scan_txt_paths=scan_paths, diagnostics_path=str(data_dir / diag_file))
+    scanner_positions = get_scan_positions_from_dataset(ds)
+    ref_points = np.vstack([np.asarray(points, dtype=np.float64) for points in ds.points_list]).astype(np.float64)
+
+    pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(ref_points))
+    ensure_normals(pcd)
+
+    distances = pcd.compute_nearest_neighbor_distance()
+    avg_dist = float(np.mean(distances))
+    print(f"[INFO] REF avg_dist: {100.0 * avg_dist:.6f} cm")
+    radii = [avg_dist * f for f in radius_factors]
+
+    mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+        pcd, o3d.utility.DoubleVector(radii)
+    )
+    mesh.compute_vertex_normals()
+
+    mesh_t = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+    scene = o3d.t.geometry.RaycastingScene()
+    _ = scene.add_triangles(mesh_t)
+    preferred_dir = compute_outward_dir_from_scanners(ref_points, scanner_positions)
+    print(f"[INFO] REF preferred_dir: {preferred_dir}")
+    return mesh, scene, preferred_dir
+
+
+def compute_signed_distance_mm(
+    scene: o3d.t.geometry.RaycastingScene, points: np.ndarray, preferred_dir: np.ndarray
+) -> np.ndarray:
+    q = o3d.core.Tensor(points.astype(np.float32), dtype=o3d.core.Dtype.Float32)
+    closest = scene.compute_closest_points(q)
+    closest_pts = closest["points"].numpy().astype(np.float32, copy=False)
+    normals = closest["primitive_normals"].numpy().astype(np.float32, copy=False)
+
+    # Orient every local primitive normal consistently towards the scanner-side direction.
+    flip = np.sum(normals * preferred_dir[None, :], axis=1) < 0.0
+    normals[flip] *= -1.0
+
+    delta = points.astype(np.float32, copy=False) - closest_pts
+    sign = np.sign(np.sum(delta * normals, axis=1)).astype(np.float32)
+    sign[sign == 0.0] = 1.0
+    dist_m = np.linalg.norm(delta, axis=1)
+    return (1000.0 * sign * dist_m).astype(np.float32)
+
+
 def ensure_normals(pcd: o3d.geometry.PointCloud) -> None:
     if not pcd.has_normals():
         pcd.estimate_normals(
@@ -144,33 +224,18 @@ def value_label(deformation_type: str, value: int) -> str:
     return f"{value:02d}mm"
 
 
-def run_one(deformation_type: str, value: int, run_root: Path) -> Dict[str, object]:
+def run_one(
+    deformation_type: str,
+    value: int,
+    run_root: Path,
+    ref_mesh: o3d.geometry.TriangleMesh,
+    ref_scene: o3d.t.geometry.RaycastingScene,
+    preferred_dir: np.ndarray,
+) -> Dict[str, object]:
     t0 = time.time()
     input_paths = build_epoch2_file_list(deformation_type, value)
     points, las_all, soll_defo_mm, has_any_soll = load_las_points(input_paths)
-    pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(points))
-    ensure_normals(pcd)
-
-    distances = pcd.compute_nearest_neighbor_distance()
-    avg_dist = float(np.mean(distances))
-    radii = [avg_dist * f for f in radius_factors]
-
-    mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
-        pcd, o3d.utility.DoubleVector(radii)
-    )
-    mesh.compute_vertex_normals()
-
-    # Option A: unsigned point-to-mesh distance as ist_defo_mm
-    mesh_t = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-    scene = o3d.t.geometry.RaycastingScene()
-    _ = scene.add_triangles(mesh_t)
-    n = points.shape[0]
-    d_m = np.empty(n, dtype=np.float32)
-    for s in range(0, n, distance_chunk_size):
-        e = min(s + distance_chunk_size, n)
-        q = o3d.core.Tensor(points[s:e].astype(np.float32), dtype=o3d.core.Dtype.Float32)
-        d_m[s:e] = scene.compute_distance(q).numpy().astype(np.float32, copy=False)
-    ist_defo_mm = (1000.0 * d_m).astype(np.float32, copy=False)
+    ist_defo_mm = compute_signed_distance_mm(ref_scene, points, preferred_dir)
 
     run_name = f"BPA_{deformation_type}_{value_label(deformation_type, value)}"
     run_dir = run_root / run_name
@@ -187,19 +252,19 @@ def run_one(deformation_type: str, value: int, run_root: Path) -> Dict[str, obje
     merged_las.write(las_path)
 
     runtime_s = time.time() - t0
-    n_verts = int(np.asarray(mesh.vertices).shape[0])
-    n_tris = int(np.asarray(mesh.triangles).shape[0])
+    n_verts = int(np.asarray(ref_mesh.vertices).shape[0])
+    n_tris = int(np.asarray(ref_mesh.triangles).shape[0])
 
     print(
         f"[OK] {run_name}: verts={n_verts}, tris={n_tris}, "
-        f"avg_dist={avg_dist:.6f}, runtime={runtime_s:.2f}s, LAS={las_path.name}"
+        f"runtime={runtime_s:.2f}s, LAS={las_path.name}"
     )
     return {
         "run_name": run_name,
         "deformation_type": deformation_type,
         "value": value,
         "value_label": value_label(deformation_type, value),
-        "avg_nn_dist_m": avg_dist,
+        "avg_nn_dist_m": np.nan,
         "radius_factors": ",".join([str(x) for x in radius_factors]),
         "n_points": int(points.shape[0]),
         "n_vertices": n_verts,
@@ -263,14 +328,18 @@ def main() -> None:
 
     print("[INFO] Start BPA sweep")
     print("[INFO] sweep_values:", sweep_values)
+    print("[INFO] radius_factors:", radius_factors)
     print("[INFO] output root:", run_root)
+
+    ref_mesh, ref_scene, preferred_dir = build_reference_bpa()
 
     rows: List[Dict[str, object]] = []
     for deformation_type in ("beule", "tz", "tilt"):
         values = sweep_values.get(deformation_type, [])
         if not values:
             continue
-        print(f"[INFO] deformation_type={deformation_type}, n_runs={len(values)}")
+        n_runs = len(values)
+        print(f"[INFO] deformation_type={deformation_type}, n_runs={n_runs}")
         for value in values:
             print(
                 f"[RUN] type={deformation_type}, value={value_label(deformation_type, value)}"
@@ -279,6 +348,9 @@ def main() -> None:
                 deformation_type=deformation_type,
                 value=value,
                 run_root=run_root,
+                ref_mesh=ref_mesh,
+                ref_scene=ref_scene,
+                preferred_dir=preferred_dir,
             )
             rows.append(row)
 

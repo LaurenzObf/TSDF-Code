@@ -99,7 +99,7 @@ def tilt_las_file(in_path: str, out_path: str, angle_deg: float) -> None:
 
 
 if __name__ == "__main__":
-    base_dir = "/home/laurenz/MQPW"
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(base_dir, "data")
     out_dir = os.path.join(base_dir, "deformed_scans")
     os.makedirs(out_dir, exist_ok=True)
