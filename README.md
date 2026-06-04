@@ -1,6 +1,6 @@
 # TSDF-Code
 
-Kompakter Code fuer TSDF-, PSR- und Ball-Pivoting-basierte Deformationsanalyse auf TLS-Punktwolken.
+Code fuer TSDF-, PSR- und Ball-Pivoting-basierte Deformationsanalyse auf TLS-Punktwolken.
 
 ## Enthaltene Dateien/Ordner
 - `TSDF/`: TSDF-Code inkl. `dataset.py`, TSDF-Sweepern und Vergleichsskripten.
